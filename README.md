@@ -51,7 +51,7 @@ Baselines from published work (not part of the ERA challenge).
 
 ### Challenge
 
-ERA workshop participants: submit your results to appear here.
+ERA workshop participants: results will be updated after the challenge concludes.
 
 | Rank | Model | Configuration (VQA) | Compatibility (VQA) | **VQA avg** | Context (pointing) | **Total** |
 |------|-------|---------------------|----------------------|--------------|---------------------|-----------|
