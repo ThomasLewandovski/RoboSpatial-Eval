@@ -31,18 +31,19 @@ def load_my_model_model(model_path=None):
 
 ### Run function
 
-- **Name**: `run_<model_key>(question, image_path, kwargs)` for locally loaded models.
+- **Name**: `run_<model_key>(question, image_path, depth_path, kwargs)` for locally loaded models.
 - **Purpose**: Run inference: load the image, build the prompt, call the model, and return the model’s answer as a **single string**.
 - **Arguments**:
   - `question`: The text question.
   - `image_path`: Path to the image file.
+  - `depth_path`: Path to the depth image file (may be `None`). Model wrappers may ignore it.
   - `kwargs`: The dictionary returned by the load function (e.g. `model`, `tokenizer`, `processor`).
 - **Return**: The answer as a string only (no extra structure).
 
 **Example:**
 
 ```python
-def run_my_model(question, image_path, kwargs):
+def run_my_model(question, image_path, depth_path, kwargs):
     from PIL import Image
     model = kwargs["model"]
     tokenizer = kwargs["tokenizer"]

@@ -41,8 +41,8 @@ Baselines from published work (not part of the ERA challenge).
 | Model | Configuration (VQA) | Compatibility (VQA) | **VQA avg** | Context (pointing) | **Total** |
 |-------|---------------------|----------------------|--------------|---------------------|-----------|
 | **[Qwen3-VL 2B Instruct](https://arxiv.org/abs/2511.21631)** | — | — | — | — | 49.1 |
-| **[RoboPoint-13B](https://robo-point.github.io)** | 69.9 | 70.5 | 70.2 | 19.7| 52.6 |
 | **[RoboBrain2.0-7B](https://arxiv.org/abs/2507.02029)** | — | — | 59.64 | 44.35 | 54.5 |
+| **[RoboPoint-13B](https://robo-point.github.io)** | 69.9 | 70.5 | 70.2 | 26.23 | 55.14 |
 | **[RoboRefer-8B-SFT](https://zhoues.github.io/RoboRefer/)** | — | — | 58.33 | 61.48 | 59.4 |
 | **[SpaceTools-3B](http://spacetools.github.io)** | — | — | 79.38 | 52.46 | 70.4 |
 | **[RoboBrain2.5-8B](https://superrobobrain.github.io)** | — | — | — | — | 73.0 |
@@ -78,29 +78,21 @@ You can either run a model through our interface or evaluate pre-generated resul
 pip install numpy tqdm pyyaml
 ```
 
-### Download & Preprocess Dataset
-You’ll need to download the dataset before running the evaluation.
-We provide a script to make this easy, especially for debugging or if you’re not using the Hugging Face `datasets` library.
-```
-python download_benchmark.py [OUTPUT_FOLDER_PATH]
-```
 
-### Set Dataset Path
-Edit config.yaml to point to your local dataset directory and desired output folder:
+### Dataset configuration
+By default the evaluation script loads RoboSpatial-Home directly from Hugging Face using the `datasets` library.
+You only need to specify where to write evaluation outputs:
 ```
 # Dataset paths
 datasets:
   robospatial_home:
-    data_dir: "/path/to/robospatial-home"  # Root directory containing JSON files and images/ folder
+    dataset_name: "chanhee-luke/RoboSpatial-Home"
 
 # Output configuration
 output:
   output_dir: "./results"  # Full path to where results will be stored
   # If not specified, a 'results' folder will be created in the current directory
 ```
-
-If `OUTPUT_FOLDER_PATH` is provided, the dataset will be downloaded and saved there. 
-If not provided, the dataset will be saved in a folder named `RoboSpatial-Home` in the current directory.
 
 
 

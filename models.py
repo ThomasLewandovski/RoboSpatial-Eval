@@ -2,8 +2,6 @@
 
 def load_robopoint_model(model_path=None):
     # Robopoint-specific imports
-    from robopoint.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-    from robopoint.conversation import conv_templates
     from robopoint.model.builder import load_pretrained_model
     from robopoint.utils import disable_torch_init
     from robopoint.mm_utils import get_model_name_from_path
@@ -34,7 +32,7 @@ def load_robopoint_model(model_path=None):
 def load_spatialvlm_model(model_path=None):
     # SpatialVLM-specific imports
     import torch
-    from mantis.models.mllava import MLlavaProcessor, LlavaForConditionalGeneration, chat_mllava
+    from mantis.models.mllava import MLlavaProcessor, LlavaForConditionalGeneration
 
     attn_implementation = "flash_attention_2"
     if model_path is None:
@@ -62,8 +60,6 @@ def load_spatialvlm_model(model_path=None):
 
 def load_llava_next_model(model_path=None):
     from llava.model.builder import load_pretrained_model
-    from llava.mm_utils import get_model_name_from_path
-    device = "cuda"
     device_map = "cuda"
     if model_path is None:
         model_path = "lmms-lab/llama3-llava-next-8b"
@@ -104,7 +100,6 @@ def load_molmo_model(model_path=None):
     return model_kwargs
 
 def load_gpt_model():
-    import openai
     return {}
 
 def load_qwen2vl_model(model_path=None):
@@ -130,7 +125,7 @@ def load_qwen2vl_model(model_path=None):
     return model_kwargs
 
 
-def run_robopoint(question, image_path, kwargs):
+def run_robopoint(question, image_path, depth_path, kwargs):
     # Robopoint-specific imports
     import torch
     from PIL import Image
@@ -192,7 +187,7 @@ def run_robopoint(question, image_path, kwargs):
     return outputs
 
 
-def run_spatialvlm(question, image_path, kwargs):
+def run_spatialvlm(question, image_path, depth_path, kwargs):
     # SpatialVLM-specific imports
     from PIL import Image
     from mantis.models.mllava import chat_mllava
@@ -210,7 +205,7 @@ def run_spatialvlm(question, image_path, kwargs):
     return response.strip()
 
 
-def run_llava_next(question, image_path, kwargs):
+def run_llava_next(question, image_path, depth_path, kwargs):
     # LLAVA-specific imports
     from PIL import Image
     import torch
@@ -225,6 +220,15 @@ def run_llava_next(question, image_path, kwargs):
     device = "cuda"
 
     image = Image.open(image_path)
+    # Depth is provided for all examples; most LLaVA-Next checkpoints won't use it.
+    # Model builders can adapt this runner to incorporate depth if their model supports it.
+    _depth_image = None
+    if depth_path:
+        try:
+            _depth_image = Image.open(depth_path)
+        except Exception:
+            _depth_image = None
+
     image_tensor = process_images([image], image_processor, model.config)
     image_tensor = [_image.to(dtype=torch.float16, device=device) for _image in image_tensor]
 
@@ -250,7 +254,7 @@ def run_llava_next(question, image_path, kwargs):
     return text_outputs[0].strip()
 
 
-def run_molmo(question, image_path, kwargs):
+def run_molmo(question, image_path, depth_path, kwargs):
     """
     Run the Molmo model using the generate_answer function.
     """
@@ -324,7 +328,7 @@ def send_question_to_openai(question, image_base64):
     return response.output[0].content[0].text
 
 
-def run_qwen2vl(question, image_path, kwargs):
+def run_qwen2vl(question, image_path, depth_path, kwargs):
     """
     Use the Qwen2-VL model to answer the question about the given image.
     We'll build a 'messages' format, apply the chat template, and then generate.

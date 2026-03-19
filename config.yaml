@@ -3,7 +3,8 @@
 # Dataset paths
 datasets:
   robospatial_home:
-    data_dir: "/path/to/robospatial-home"  # Root directory containing JSON files and images/ folder
+    # Load RoboSpatial-Home from Hugging Face
+    dataset_name: "chanhee-luke/RoboSpatial-Home"
 
 # Output configuration
 output:

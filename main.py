@@ -9,14 +9,14 @@ import numpy as np
 from tqdm import tqdm
 import yaml
 import argparse
-import re
-import ast
 
 # Import evaluation functions - these are always needed
 from evaluation import (
     eval_robospatial_home,
     eval_pregenerated_results
 )
+from PIL import Image
+import io
 
 # ------------------------------------------------------------------------
 # 2) General Utility Functions
@@ -66,14 +66,18 @@ def load_model(model_name, model_path=None):
     load_func, _ = import_model_modules(model_name)
     return load_func(model_path)
 
-def run_model(question, image_path, model_name, model_kwargs):
+def run_model(question, image_path, depth_path, model_name, model_kwargs):
     """
-    Generic helper: runs the specified model on a single (question, image).
+    Generic helper: runs the specified model on a single (question, image[, depth]).
     Returns the string answer from the model.
     """
     if not os.path.exists(image_path):
         # Just a warning if the path doesn't exist
         print(f"[WARNING] Image path not found: {image_path}")
+
+    if depth_path is not None and not os.path.exists(depth_path):
+        # Depth is optional; warn but don't fail.
+        print(f"[WARNING] Depth image path not found: {depth_path}")
 
     # Access the correct run function for this model
     _, run_func = import_model_modules(model_name)
@@ -83,7 +87,7 @@ def run_model(question, image_path, model_name, model_kwargs):
         image_base64 = encode_image(image_path)
         answer = run_func(question, image_base64)
     else:
-        answer = run_func(question, image_path, model_kwargs)
+        answer = run_func(question, image_path, depth_path, model_kwargs)
         
     return answer
 
@@ -103,8 +107,12 @@ def load_config(config_path):
         raise ValueError("Config file missing 'datasets' section")
     if "robospatial_home" not in config["datasets"]:
         raise ValueError("Config file missing 'robospatial_home' section in 'datasets'")
-    if "data_dir" not in config["datasets"]["robospatial_home"]:
-        raise ValueError("Config file missing 'data_dir' for robospatial_home")
+
+    ds_cfg = config["datasets"]["robospatial_home"]
+    # Always use HF dataset by default
+    ds_cfg.setdefault("dataset_name", "chanhee-luke/RoboSpatial-Home")
+    # Internal directory for any optional on-disk media; not user-configured.
+    ds_cfg.setdefault("cache_dir", os.path.join(os.getcwd(), "RoboSpatial-Home-cache"))
     
     # Set defaults for output configuration
     if "output" not in config or config["output"] is None:
@@ -115,6 +123,88 @@ def load_config(config_path):
         config["output"]["output_dir"] = os.path.join(os.getcwd(), "results")
     
     return config
+
+
+def _pil_from_hf_field(field):
+    if field is None:
+        return None
+    if isinstance(field, Image.Image):
+        return field
+    if isinstance(field, dict):
+        if "pil" in field and isinstance(field["pil"], Image.Image):
+            return field["pil"]
+        if "path" in field and field["path"]:
+            return Image.open(field["path"])
+        if "bytes" in field and field["bytes"] is not None:
+            return Image.open(io.BytesIO(field["bytes"]))
+    raise ValueError(f"Unsupported HF image field type: {type(field)}")
+
+
+def load_robospatial_home_entries(config, output_dir, dry_run=False, materialize_hf_media=False):
+    """
+    Returns (entries_by_split: dict[str, list[dict]], data_dir: str)
+    Each entry matches the local JSON schema: {category, question, answer, img, mask, depth_image?}
+    In HF mode, this can optionally materialize img/mask/depth to disk in a local images directory.
+    """
+    ds_cfg = config["datasets"]["robospatial_home"]
+
+    # HF mode only
+    from datasets import load_dataset
+
+    dataset_name = ds_cfg["dataset_name"]
+    cache_dir = ds_cfg["cache_dir"]
+    images_dir = os.path.join(cache_dir, "images")
+    if materialize_hf_media:
+        os.makedirs(images_dir, exist_ok=True)
+
+    ds_dict = load_dataset(dataset_name)
+    entries_by_split = {}
+    for split_name, ds in ds_dict.items():
+        max_n = 3 if dry_run else len(ds)
+        entries = []
+        for idx in range(max_n):
+            sample = ds[idx]
+            img_rel = os.path.join("images", f"img_{split_name}_{idx}.png")
+            mask_rel = os.path.join("images", f"mask_{split_name}_{idx}.png")
+            depth_rel = os.path.join("images", f"depth_{split_name}_{idx}.png")
+
+            img_abs = os.path.join(cache_dir, img_rel)
+            mask_abs = os.path.join(cache_dir, mask_rel)
+            depth_abs = os.path.join(cache_dir, depth_rel)
+
+            if materialize_hf_media:
+                if not os.path.exists(img_abs):
+                    pil_img = _pil_from_hf_field(sample.get("img"))
+                    if pil_img is not None:
+                        os.makedirs(os.path.dirname(img_abs), exist_ok=True)
+                        pil_img.save(img_abs)
+                if not os.path.exists(mask_abs):
+                    pil_mask = _pil_from_hf_field(sample.get("mask"))
+                    if pil_mask is not None:
+                        os.makedirs(os.path.dirname(mask_abs), exist_ok=True)
+                        pil_mask.save(mask_abs)
+                if not os.path.exists(depth_abs):
+                    pil_depth = _pil_from_hf_field(sample.get("depth_image"))
+                    if pil_depth is not None:
+                        os.makedirs(os.path.dirname(depth_abs), exist_ok=True)
+                        pil_depth.save(depth_abs)
+
+            entries.append(
+                {
+                    "category": sample.get("category", split_name),
+                    "question": sample.get("question", ""),
+                    "answer": sample.get("answer", ""),
+                    "img": img_rel,
+                    # In results mode we avoid disk materialization, but evaluation can still
+                    # load masks directly from HF. We only drop `mask` if HF sample has none.
+                    # Depth is always threaded through model calls; model wrappers may ignore it.
+                    "depth_image": depth_rel if sample.get("depth_image") is not None else None,
+                    "mask": mask_rel if sample.get("mask") is not None else None,
+                }
+            )
+        entries_by_split[split_name] = entries
+
+    return entries_by_split, cache_dir
 
 # ------------------------------------------------------------------------
 # 3) Main Script
@@ -152,6 +242,7 @@ def main():
     parser.add_argument('model_path', nargs='?', default=None, help='Optional path to model weights')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config file')
     parser.add_argument('--dry-run', action='store_true', help='Only evaluate the first 3 examples')
+    parser.add_argument('--no-progress', action='store_true', help='Disable progress bar output')
     
     args = parser.parse_args()
     
@@ -161,6 +252,7 @@ def main():
     config_path = args.config
     results_file = args.results
     dry_run = args.dry_run
+    show_progress = not args.no_progress
 
     # Check if either model_name or results_file is provided
     if not model_name and not results_file:
@@ -171,15 +263,9 @@ def main():
     # 2) Load configuration from YAML file
     try:
         config = load_config(config_path)
-        data_dir = config["datasets"]["robospatial_home"]["data_dir"]
         output_dir = config["output"]["output_dir"]
     except (FileNotFoundError, ValueError) as e:
         print(f"Error loading configuration: {e}")
-        sys.exit(1)
-    
-    # Check if paths exist
-    if not os.path.exists(data_dir):
-        print(f"Error: Data directory '{data_dir}' not found")
         sys.exit(1)
 
     # 3) Where to save output
@@ -189,11 +275,20 @@ def main():
     # Prefix for file names if dry run is enabled
     file_prefix = "dry_run_" if dry_run else ""
 
-    # 4) Find all .json files in the data_dir (ground truth)
-    json_files = [f for f in os.listdir(data_dir) if f.endswith(".json")]
-    if not json_files:
-        print(f"No JSON files found in {data_dir}")
-        sys.exit(0)
+    # 4) Load benchmark entries (local or HF)
+    try:
+        # When using pre-generated results we don't need image files on disk, and
+        # we now load masks lazily from HF in `evaluation.py`.
+        materialize_hf_media = results_file is None
+        entries_by_split, data_dir = load_robospatial_home_entries(
+            config,
+            output_dir,
+            dry_run=dry_run,
+            materialize_hf_media=materialize_hf_media,
+        )
+    except Exception as e:
+        print(f"Error loading benchmark: {e}")
+        sys.exit(1)
 
     # 5) If using pre-generated results, verify the results file exists
     model_kwargs = None
@@ -227,20 +322,15 @@ def main():
     all_stats = []
     overall_category_stats = {}  # For aggregating per-category stats across files
 
-    # 6) Evaluate each JSON file
-    for jf in tqdm(json_files, desc=f"Processing RoboSpatial-Home JSONs"):
-        file_path = os.path.join(data_dir, jf)
-        with open(file_path, "r") as f:
-            data = json.load(f)
+    # 6) Evaluate each split
+    total_examples = sum(len(data) for data in entries_by_split.values())
+    pbar = None
+    if show_progress:
+        # A single overall bar is clearer than nested bars.
+        pbar = tqdm(total=total_examples, desc="Evaluating RoboSpatial-Home", unit="ex", dynamic_ncols=True)
 
-        # If data is a single dict, make it a list
-        if not isinstance(data, list):
-            data = [data]
-
-        # If dry run is enabled, only evaluate the first 3 examples
-        if dry_run:
-            print("Dry run enabled: Evaluating only the first 3 examples from this file.")
-            data = data[:3]
+    for split_name, data in entries_by_split.items():
+        jf = f"{split_name}.json"
 
         # Evaluate either using pre-generated results or by running the model
         if results_file:
@@ -252,9 +342,9 @@ def main():
             if not file_results_data:
                 file_results_data = results_data
                 
-            stats = eval_pregenerated_results(data, file_results_data, data_dir)
+            stats = eval_pregenerated_results(data, file_results_data, data_dir, pbar=pbar, split_name=split_name)
         else:
-            stats = eval_robospatial_home(data, model_name, model_kwargs, data_dir, run_model)
+            stats = eval_robospatial_home(data, model_name, model_kwargs, data_dir, run_model, pbar=pbar, split_name=split_name)
 
         # Save per-file results with the appropriate prefix
         base_name = os.path.splitext(jf)[0]
@@ -300,6 +390,9 @@ def main():
             summary_entry["unmatched_entries"] = stats["unmatched_entries"]
 
         all_stats.append(summary_entry)
+
+    if pbar is not None:
+        pbar.close()
 
     # 7) Aggregate Stats across all files
     overall_correct = sum(e["num_correct"] for e in all_stats)

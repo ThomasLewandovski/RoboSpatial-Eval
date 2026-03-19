@@ -41,7 +41,7 @@ def main():
     start_time = time.time()
     
     # Load the dataset dictionary from Hugging Face with progress feedback
-    print(f"Downloading dataset from Hugging Face (this may take a while)...")
+    print("Downloading dataset from Hugging Face (this may take a while)...")
     ds_dict = load_dataset(dataset_name)
     print(f"Dataset downloaded successfully in {time.time() - start_time:.1f} seconds")
 
@@ -53,7 +53,6 @@ def main():
 
     # We'll gather all annotations into one JSON list
     all_annotations = []
-    total_samples = sum(len(ds) for ds in ds_dict.values())
     processed_samples = 0
     saved_images = 0
 
@@ -144,13 +143,13 @@ def main():
             processed_samples += 1
 
     # Save all annotations to a single JSON file
-    print(f"\nSaving annotations to JSON file...")
+    print("\nSaving annotations to JSON file...")
     annotations_path = os.path.join(local_folder, "annotations.json")
     with open(annotations_path, "w", encoding="utf-8") as f:
         json.dump(all_annotations, f, indent=2)
 
     total_time = time.time() - start_time
-    print(f"\nDownload and processing complete!")
+    print("\nDownload and processing complete!")
     print(f"Saved dataset to folder: {local_folder}")
     print(f"Number of samples in JSON: {len(all_annotations)}")
     print(f"Total images saved: {saved_images}")
