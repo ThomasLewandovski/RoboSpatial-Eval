@@ -42,7 +42,7 @@ Baselines from published work (not part of the ERA challenge).
 |-------|---------------------|----------------------|--------------|---------------------|-----------|
 | **[Qwen3-VL 2B Instruct](https://arxiv.org/abs/2511.21631)** | — | — | — | — | 49.1 |
 | **[RoboBrain2.0-7B](https://arxiv.org/abs/2507.02029)** | — | — | 59.64 | 44.35 | 54.5 |
-| **[RoboPoint-13B](https://robo-point.github.io)** | 69.9 | 70.5 | 70.2 | 26.23 | 55.14 |
+| **[RoboPoint-13B](https://robo-point.github.io)** | 69.9 | 70.5 | 70.2 | 26.23 | 55.1 |
 | **[RoboRefer-8B-SFT](https://zhoues.github.io/RoboRefer/)** | — | — | 58.33 | 61.48 | 59.4 |
 | **[SpaceTools-3B](http://spacetools.github.io)** | — | — | 79.38 | 52.46 | 70.4 |
 | **[RoboBrain2.5-8B](https://superrobobrain.github.io)** | — | — | — | — | 73.0 |
