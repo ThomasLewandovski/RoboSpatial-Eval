@@ -12,6 +12,7 @@ import argparse
 
 # Import evaluation functions - these are always needed
 from evaluation import (
+    DEFAULT_NUM_POINTS_TO_MATCH,
     eval_robospatial_home,
     eval_pregenerated_results
 )
@@ -121,8 +122,22 @@ def load_config(config_path):
     # If output_dir is specified, use it, otherwise default to 'results' in current directory
     if "output_dir" not in config["output"]:
         config["output"]["output_dir"] = os.path.join(os.getcwd(), "results")
+
+    if "evaluation" not in config or config["evaluation"] is None:
+        config["evaluation"] = {}
+    config["evaluation"].setdefault("num_points_to_match", DEFAULT_NUM_POINTS_TO_MATCH)
     
     return config
+
+
+def validate_num_points_to_match(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("num_points_to_match must be an integer")
+    if parsed < 1:
+        raise ValueError("num_points_to_match must be at least 1")
+    return parsed
 
 
 def _pil_from_hf_field(field):
@@ -212,8 +227,8 @@ def load_robospatial_home_entries(config, output_dir, dry_run=False, materialize
 def main():
     """
     Usage:
-        python main.py <MODEL_NAME> [MODEL_PATH] --config CONFIG_PATH [--dry-run]
-        python main.py --results RESULTS_FILE --config CONFIG_PATH [--dry-run]
+        python main.py <MODEL_NAME> [MODEL_PATH] --config CONFIG_PATH [--dry-run] [--num-points-to-match N]
+        python main.py --results RESULTS_FILE --config CONFIG_PATH [--dry-run] [--num-points-to-match N]
 
     Required arguments:
         - --config CONFIG_PATH: Path to YAML config file with dataset paths
@@ -227,6 +242,7 @@ def main():
 
     Optional arguments:
         - --dry-run: Only evaluate the first 3 examples from each JSON file
+        - --num-points-to-match: Number of predicted points to consider for point questions
 
     Examples:
         python main.py molmo /path/to/my/model --config config.yaml --dry-run
@@ -243,6 +259,12 @@ def main():
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config file')
     parser.add_argument('--dry-run', action='store_true', help='Only evaluate the first 3 examples')
     parser.add_argument('--no-progress', action='store_true', help='Disable progress bar output')
+    parser.add_argument(
+        '--num-points-to-match',
+        type=int,
+        default=None,
+        help='Number of predicted points to consider for point questions; overrides config evaluation.num_points_to_match',
+    )
     
     args = parser.parse_args()
     
@@ -264,6 +286,10 @@ def main():
     try:
         config = load_config(config_path)
         output_dir = config["output"]["output_dir"]
+        configured_num_points = config["evaluation"]["num_points_to_match"]
+        num_points_to_match = validate_num_points_to_match(
+            args.num_points_to_match if args.num_points_to_match is not None else configured_num_points
+        )
     except (FileNotFoundError, ValueError) as e:
         print(f"Error loading configuration: {e}")
         sys.exit(1)
@@ -271,6 +297,7 @@ def main():
     # 3) Where to save output
     os.makedirs(output_dir, exist_ok=True)
     print(f"Results will be saved to: {output_dir}")
+    print(f"Point evaluation will consider up to {num_points_to_match} predicted point(s) per answer.")
 
     # Prefix for file names if dry run is enabled
     file_prefix = "dry_run_" if dry_run else ""
@@ -342,9 +369,25 @@ def main():
             if not file_results_data:
                 file_results_data = results_data
                 
-            stats = eval_pregenerated_results(data, file_results_data, data_dir, pbar=pbar, split_name=split_name)
+            stats = eval_pregenerated_results(
+                data,
+                file_results_data,
+                data_dir,
+                pbar=pbar,
+                split_name=split_name,
+                num_points_to_match=num_points_to_match,
+            )
         else:
-            stats = eval_robospatial_home(data, model_name, model_kwargs, data_dir, run_model, pbar=pbar, split_name=split_name)
+            stats = eval_robospatial_home(
+                data,
+                model_name,
+                model_kwargs,
+                data_dir,
+                run_model,
+                pbar=pbar,
+                split_name=split_name,
+                num_points_to_match=num_points_to_match,
+            )
 
         # Save per-file results with the appropriate prefix
         base_name = os.path.splitext(jf)[0]
@@ -384,6 +427,7 @@ def main():
             "num_total": stats["num_total"],
             "illformed_questions": stats["illformed_questions"],
             "illformed_responses": stats["illformed_responses"],
+            "num_points_to_match": stats["num_points_to_match"],
             "category_stats": stats["category_stats"]
         }
         if "unmatched_entries" in stats:
@@ -407,6 +451,7 @@ def main():
         "overall_accuracy": overall_acc,
         "overall_correct": overall_correct,
         "overall_total": overall_total,
+        "num_points_to_match": num_points_to_match,
         "file_summaries": all_stats,
     }
     
@@ -438,4 +483,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

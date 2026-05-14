@@ -103,13 +103,13 @@ There are two ways to use this tool:
 ### 1. Run and evaluate a model
 
 ```
-python main.py <MODEL_NAME> [MODEL_PATH] --config CONFIG_PATH [--dry-run]
+python main.py <MODEL_NAME> [MODEL_PATH] --config CONFIG_PATH [--dry-run] [--num-points-to-match N]
 ```
 
 ### 2. Evaluate pre-generated results
 
 ```
-python main.py --results RESULTS_FILE --config CONFIG_PATH [--dry-run]
+python main.py --results RESULTS_FILE --config CONFIG_PATH [--dry-run] [--num-points-to-match N]
 ```
 
 ### Required arguments:
@@ -124,6 +124,7 @@ python main.py --results RESULTS_FILE --config CONFIG_PATH [--dry-run]
 
 ### Optional arguments:
 - `--dry-run`: Only evaluate the first 3 examples from each JSON file
+- `--num-points-to-match N`: For pointing questions, consider up to the first `N` predicted points when matching against the answer mask. Defaults to `2`, or `evaluation.num_points_to_match` from the config.
 
 ### Example Commands:
 
@@ -139,6 +140,9 @@ python main.py spatialvlm --config config.yaml --dry-run
 
 # Evaluate pre-generated results from JSON
 python main.py --results /path/to/results.json --config config.yaml
+
+# Evaluate pre-generated results using only the first predicted point
+python main.py --results /path/to/results.json --config config.yaml --num-points-to-match 1
 ```
 
 ### Pre-generated Results Format
@@ -159,7 +163,7 @@ The pre-generated results file should be a JSON file containing a list of QAs wi
 
 🚨 **Important**: The evaluation script matches each entry in your results file to the ground truth using a combination of the `question` and `img` fields. These two fields must exactly match the corresponding example in the dataset.
 
-⚠️ **Note on point formatting**: The evaluation code attempts to handle common variations in point representations, including cases where model responses contain a mix of text and coordinates. If the answer field includes additional text, the code uses regular expressions to extract only the coordinate points. That said, for best results, format your predictions as clean, Python-style tuples—just like in the benchmark annotations.
+⚠️ **Note on point formatting**: The evaluation code attempts to handle common variations in point representations, including cases where model responses contain a mix of text and coordinates. If the answer field includes additional text, the code uses regular expressions to extract only the coordinate points. By default, point evaluation considers up to the first two predicted points and counts the answer as correct if any selected point falls inside the answer mask. That said, for best results, format your predictions as clean, Python-style tuples—just like in the benchmark annotations.
 
 ### Output
 

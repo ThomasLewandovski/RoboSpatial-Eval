@@ -12,6 +12,10 @@ from PIL import Image
 import numpy as np
 
 _HF_DATASET_NAME = "chanhee-luke/RoboSpatial-Home"
+DEFAULT_NUM_POINTS_TO_MATCH = 2
+_POINT_RE = re.compile(
+    r'[\(\[]\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*[\)\]]'
+)
 
 def _clamp(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
@@ -119,71 +123,91 @@ def _normalized_xy_to_mask_indices(x, y, width, height):
     return px, py
 
 
+def _normalize_num_points_to_match(num_points_to_match):
+    try:
+        value = int(num_points_to_match)
+    except (TypeError, ValueError):
+        value = DEFAULT_NUM_POINTS_TO_MATCH
+    return max(1, value)
+
+
+def _coerce_point(value):
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        return None
+    x, y = value
+    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+        return None
+    return (float(x), float(y))
+
+
+def _collect_points(value, points, limit):
+    if len(points) >= limit:
+        return
+
+    point = _coerce_point(value)
+    if point is not None:
+        points.append(point)
+        return
+
+    if isinstance(value, (tuple, list)):
+        for item in value:
+            _collect_points(item, points, limit)
+            if len(points) >= limit:
+                return
+
+
+def _extract_points(generated_answer, num_points_to_match=DEFAULT_NUM_POINTS_TO_MATCH):
+    """
+    Extract up to num_points_to_match (x,y) points from the model output string.
+    Returns (parsed_points_list_or_None, is_parsable_bool).
+    """
+    limit = _normalize_num_points_to_match(num_points_to_match)
+    answer_text = str(generated_answer)
+    points = []
+
+    # Common model outputs mix explanatory text with tuple/list coordinates.
+    for match in _POINT_RE.finditer(answer_text):
+        try:
+            points.append((float(match.group(1)), float(match.group(2))))
+        except (ValueError, TypeError):
+            continue
+        if len(points) >= limit:
+            return points, True
+
+    if points:
+        return points, True
+
+    # Fall back to Python-literal parsing for structured outputs that do not
+    # contain bracketed coordinate pairs in the usual textual form.
+    try:
+        gen_val = ast.literal_eval(answer_text.strip())
+    except (SyntaxError, ValueError):
+        return None, False
+
+    _collect_points(gen_val, points, limit)
+    if not points:
+        return None, False
+    return points, True
+
+
 def _extract_first_point(generated_answer):
     """
     Extract the first (x,y) point from the model output string.
     Returns (parsed_answer_tuple_or_None, is_parsable_bool).
     """
-    # Try to match tuple format (x,y) or (x, y)
-    tuple_match = re.search(r'\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*\)', generated_answer)
-    if tuple_match:
-        try:
-            return (float(tuple_match.group(1)), float(tuple_match.group(2))), True
-        except (ValueError, TypeError):
-            pass
-
-    # Try to match list format [x,y] or [x, y]
-    list_match = re.search(r'\[\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*\]', generated_answer)
-    if list_match:
-        try:
-            return (float(list_match.group(1)), float(list_match.group(2))), True
-        except (ValueError, TypeError):
-            pass
-
-    # Fall back to extracting the first list (text between square brackets)
-    try:
-        match = re.search(r'\[(.*?)\]', generated_answer, re.DOTALL)
-        if match is None:
-            return None, False
-
-        list_content = match.group(1)
-        list_content = re.sub(r',(\S)', r', \1', list_content)
-        list_content = list_content.strip()
-        if list_content.endswith(','):
-            list_content = list_content[:-1]
-
-        list_str = '[' + list_content + ']'
-        try:
-            gen_val = ast.literal_eval(list_str)
-        except (SyntaxError, ValueError):
-            tuple_match = re.search(r'\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*\)', list_content)
-            if tuple_match:
-                return (float(tuple_match.group(1)), float(tuple_match.group(2))), True
-            return None, False
-
-        if isinstance(gen_val, list):
-            if len(gen_val) == 0:
-                return None, False
-            if len(gen_val) == 2 and all(isinstance(v, (int, float)) for v in gen_val):
-                gen_point = tuple(gen_val)
-            elif isinstance(gen_val[0], tuple):
-                gen_point = gen_val[0]
-            elif isinstance(gen_val[0], list) and len(gen_val[0]) == 2:
-                gen_point = tuple(gen_val[0])
-            else:
-                return None, False
-        elif isinstance(gen_val, tuple):
-            gen_point = gen_val
-        else:
-            return None, False
-
-        if not (isinstance(gen_point, tuple) and len(gen_point) == 2):
-            return None, False
-        return (float(gen_point[0]), float(gen_point[1])), True
-    except Exception:
+    points, is_parsable = _extract_points(generated_answer, num_points_to_match=1)
+    if not is_parsable or not points:
         return None, False
+    return points[0], True
 
-def evaluate_answer(ground_truth, generated_answer, mask_path=None, data_dir=None, category=None):
+def evaluate_answer(
+    ground_truth,
+    generated_answer,
+    mask_path=None,
+    data_dir=None,
+    category=None,
+    num_points_to_match=DEFAULT_NUM_POINTS_TO_MATCH,
+):
     """
     Evaluates if the generated answer is correct based on the ground truth.
     Returns a tuple of (is_correct, is_binary_answer, parsed_answer, is_parsable).
@@ -208,11 +232,13 @@ def evaluate_answer(ground_truth, generated_answer, mask_path=None, data_dir=Non
         parsed_answer = None
         is_parsable = False
 
-        parsed_answer, is_parsable = _extract_first_point(generated_answer)
-        if not is_parsable or parsed_answer is None:
+        parsed_points, is_parsable = _extract_points(
+            generated_answer,
+            num_points_to_match=num_points_to_match,
+        )
+        if not is_parsable or parsed_points is None:
             return False, is_binary, None, False
-
-        x, y = parsed_answer
+        parsed_answer = parsed_points[0] if len(parsed_points) == 1 else parsed_points
 
         # Require mask for non-binary questions from now on
         if not mask_path:
@@ -225,13 +251,22 @@ def evaluate_answer(ground_truth, generated_answer, mask_path=None, data_dir=Non
                 mask_path=mask_path,
                 category=category,
             )
-            correct = _point_in_mask_pil(x, y, pil_mask)
+            correct = any(_point_in_mask_pil(x, y, pil_mask) for x, y in parsed_points)
             return correct, is_binary, parsed_answer, is_parsable
         except Exception as e:
             print(f"Error evaluating mask-based answer: {e}")
             return False, is_binary, parsed_answer, is_parsable
 
-def eval_robospatial_home(json_data, model_name, model_kwargs, data_dir, run_model_fn, pbar=None, split_name=None):
+def eval_robospatial_home(
+    json_data,
+    model_name,
+    model_kwargs,
+    data_dir,
+    run_model_fn,
+    pbar=None,
+    split_name=None,
+    num_points_to_match=DEFAULT_NUM_POINTS_TO_MATCH,
+):
     """
     Evaluate RoboSpatial-Home data by running the model on each example.
     
@@ -287,6 +322,7 @@ def eval_robospatial_home(json_data, model_name, model_kwargs, data_dir, run_mod
             mask_path=mask_rel_path,
             data_dir=data_dir,
             category=category,
+            num_points_to_match=num_points_to_match,
         )
         
         # Count illformed responses - now tracks any answer that couldn't be parsed correctly
@@ -321,11 +357,19 @@ def eval_robospatial_home(json_data, model_name, model_kwargs, data_dir, run_mod
         "num_total": num_total,
         "illformed_questions": illformed_questions,
         "illformed_responses": illformed_responses,
+        "num_points_to_match": _normalize_num_points_to_match(num_points_to_match),
         "category_stats": category_stats,
         "results": results
     }
 
-def eval_pregenerated_results(gt_data, results_data, data_dir, pbar=None, split_name=None):
+def eval_pregenerated_results(
+    gt_data,
+    results_data,
+    data_dir,
+    pbar=None,
+    split_name=None,
+    num_points_to_match=DEFAULT_NUM_POINTS_TO_MATCH,
+):
     """
     Evaluate pre-generated results against ground truth.
     
@@ -408,6 +452,7 @@ def eval_pregenerated_results(gt_data, results_data, data_dir, pbar=None, split_
             mask_path=mask_rel_path,
             data_dir=data_dir,
             category=category,
+            num_points_to_match=num_points_to_match,
         )
         
         # Count illformed responses - now tracks any answer that couldn't be parsed correctly
@@ -442,6 +487,7 @@ def eval_pregenerated_results(gt_data, results_data, data_dir, pbar=None, split_
         "num_total": num_total,
         "illformed_questions": illformed_questions,
         "illformed_responses": illformed_responses,
+        "num_points_to_match": _normalize_num_points_to_match(num_points_to_match),
         "unmatched_entries": unmatched_entries,  # New field to track unmatched entries
         "category_stats": category_stats,
         "results": results
