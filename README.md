@@ -10,6 +10,8 @@ Authors: [Chan Hee Song](https://chanh.ee)<sup>1</sup>, [Valts Blukis](https://r
 
 ### CVPR 2026 ERA Workshop & Challenge
 
+**⚠️ Important Note**: If you forked the codebase before 5/13, please pull the latest updates, which include the revised context evaluation logic.
+
 **RoboSpatial-Home is one of two challenges in the [Embodied Reasoning in Action (ERA) Workshop and Challenge](https://embodied-reasoning.github.io) on Embodied Reasoning for Robotics (CVPR 2026): the RoboSpatial challenge (this repo) and the PointArena challenge.**
 
 - **Challenge instructions (participation, submission, rules):** See the **[RoboSpatial Challenge Instruction](https://docs.google.com/document/d/1Y1wivo8B_8OpHgP9x99IUsdpIyOMENNRtLmzM7ByZfU/edit?usp=sharing)** document for the full challenge, including how to submit your model.
