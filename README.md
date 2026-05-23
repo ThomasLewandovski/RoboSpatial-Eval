@@ -10,14 +10,14 @@ SpatialBot is a spatial reasoning system built upon RoboBrain2.5 for evaluating 
 
 Contributors:
 
-- Haijiao Zhao
-- Kehan Meng
-- Jianhua Yang
-- Zhizhen Cai
-- Dong An
-- Yixiang Chen
-- Yan Huang
-- Liang Wang
+- Haijiao Zhao, Beijing University Of Posts and Telecommunications
+- Kehan Meng, Beijing University Of Posts and Telecommunications
+- Jianhua Yang, Institute of Automation, Chinese Academy of Sciences
+- Zhizhen Cai, Beijing University Of Posts and Telecommunications
+- Dong An, Mohamed bin Zayed University of Artificial Intelligence (MBZUAI)
+- Yixiang Chen, Institute of Automation, Chinese Academy of Sciences
+- Yan Huang, Institute of Automation, Chinese Academy of Sciences
+- Liang Wang, Institute of Automation, Chinese Academy of Sciences
 
 ---
 
