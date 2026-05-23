@@ -39,7 +39,7 @@ Contributors:
 Clone repository:
 
 ```bash
-git clone https://github.com/YOUR_GITHUB/SpatialBot.git
+git clone https://github.com/ThomasLewandovski/RoboSpatial-Eval.git
 
 cd SpatialBot
 ```
