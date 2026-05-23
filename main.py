@@ -50,10 +50,13 @@ def import_model_modules(model_name):
     elif model_name.startswith("gpt"):
         from models import load_gpt_model, send_question_to_openai
         return load_gpt_model, send_question_to_openai
+    elif model_name.startswith("robobrain25"):
+        from models import load_robobrain25_model, run_robobrain25
+        return load_robobrain25_model, run_robobrain25
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
-def load_model(model_name, model_path=None):
+def load_model(model_name, model_path=None, config = None):
     """
     Load the chosen model once, returning any needed kwargs (tokenizer, model object, etc.).
     If model_path is provided, it overrides the default model checkpoint.
@@ -65,7 +68,10 @@ def load_model(model_name, model_path=None):
     
     # Dynamically import only what we need
     load_func, _ = import_model_modules(model_name)
-    return load_func(model_path)
+    try:
+        return load_func(model_path, config=config)
+    except TypeError:
+        return load_func(model_path)
 
 def run_model(question, image_path, depth_path, model_name, model_kwargs):
     """
@@ -343,7 +349,7 @@ def main():
             torch.cuda.manual_seed_all(56)
             
         print(f"Loading model '{model_name}' for RoboSpatial-Home evaluation...")
-        model_kwargs = load_model(model_name, model_path)
+        model_kwargs = load_model(model_name, model_path, config)
         print("Model loaded successfully.")
 
     all_stats = []
