@@ -15,3 +15,48 @@ output:
 evaluation:
   # For point questions, score against up to this many predicted points.
   num_points_to_match: 2
+
+
+# Dataset paths
+datasets:
+  robospatial_home:
+    dataset_name: "chanhee-luke/RoboSpatial-Home"
+
+# Output configuration
+output:
+  output_dir: "./results"
+
+evaluation:
+  num_points_to_match: 2
+
+
+robobrain25:
+  # Local path or Hugging Face repo id.
+  model_repo: "YOUR_HF_NAME/YOUR_ROBOBRAIN25_MODEL"
+  
+  # Optional HF cache target if model_path is a repo id.
+  local_model_dir: "./checkpoints/robobrain25"
+  model_revision: "main"
+
+  # Use "single" to keep model on one visible GPU.
+  # Use "auto" if you want accelerate to shard automatically.
+  device_map: "single"
+
+  torch_dtype: "bfloat16"
+  trust_remote_code: true
+
+  # Keep this true if weights have an 'llm.' prefix.
+  manual_rename_llm_prefix: false
+
+  # If local processor loading fails.
+  fallback_processor: "Qwen/Qwen3-VL-8B-Instruct"
+
+  # RoboBrain2.5 context output convention.
+  point_divisor: 1000.0
+  num_points_to_return: 2
+  manual_rename_llm_prefix: false
+
+  generation:
+    max_new_tokens_vqa: 8
+    max_new_tokens_pointing: 64
+    do_sample: false
