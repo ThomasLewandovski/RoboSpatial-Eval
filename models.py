@@ -507,6 +507,9 @@ def load_robobrain25_model(model_path=None, config=None):
                 "`pip install -r requirements.txt` after updating dependencies."
             ) from exc
 
+        if revision_name == "main":
+            revision_name = "master"
+
         print(
             "[ROBOBRAIN25] downloading from ModelScope:",
             repo_id,

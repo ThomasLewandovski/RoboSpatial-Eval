@@ -36,7 +36,7 @@ robobrain25:
   
   # Local target directory for downloaded model weights.
   local_model_dir: "./checkpoints/robobrain25"
-  model_revision: "main"
+  model_revision: "master"
 
   # Use "single" to keep model on one visible GPU.
   # Use "auto" if you want accelerate to shard automatically.
