@@ -77,12 +77,6 @@ Later runs: local cache -> directly loaded
 
 ## Run Evaluation
 
-Run partial benchmark:
-
-```bash
-python main.py robobrain25 --config config.yaml --limit 10
-```
-
 Full evaluation:
 
 ```bash
