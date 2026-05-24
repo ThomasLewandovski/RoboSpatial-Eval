@@ -31,10 +31,10 @@ evaluation:
 
 
 robobrain25:
-  # Local path or Hugging Face repo id.
+  # ModelScope URI, Hugging Face repo id, or local model directory.
   model_repo: "modelscope://Lewandovski/SpatialBot"
   
-  # Optional HF cache target if model_path is a repo id.
+  # Local target directory for downloaded model weights.
   local_model_dir: "./checkpoints/robobrain25"
   model_revision: "main"
 
