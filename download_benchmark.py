@@ -11,6 +11,8 @@ import os
 import sys
 import json
 from datasets import load_dataset
+from datasets.utils.logging import enable_progress_bar, set_verbosity_info
+from huggingface_hub.utils import enable_progress_bars as enable_hf_hub_progress_bars
 from PIL import Image
 from tqdm import tqdm
 import time
@@ -27,6 +29,10 @@ def save_pil_image(image_data, dest_path):
     return dest_path
 
 def main():
+    enable_progress_bar()
+    set_verbosity_info()
+    enable_hf_hub_progress_bars()
+
     # The name of the dataset on Hugging Face
     dataset_name = "chanhee-luke/RoboSpatial-Home"
     
