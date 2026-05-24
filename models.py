@@ -636,13 +636,43 @@ def load_robobrain25_model(model_path=None, config=None):
 
     model.eval()
 
-    processor=AutoProcessor.from_pretrained(
+    fallback_processor = qcfg.get("fallback_processor")
 
-        model_root,
+    try:
 
-        trust_remote_code=True
+        processor=AutoProcessor.from_pretrained(
 
-    )
+            model_root,
+
+            trust_remote_code=True
+
+        )
+
+    except Exception as exc:
+
+        if not fallback_processor:
+
+            raise
+
+        print(
+            "[ROBOBRAIN25] local processor load failed:",
+            repr(exc),
+            flush=True
+        )
+
+        print(
+            "[ROBOBRAIN25] loading fallback processor:",
+            fallback_processor,
+            flush=True
+        )
+
+        processor=AutoProcessor.from_pretrained(
+
+            fallback_processor,
+
+            trust_remote_code=True
+
+        )
 
     return {
 
