@@ -468,7 +468,13 @@ def _robospatial_divide_points(answer_text, point_divisor=1000.0, max_points=2):
 
 
 def load_robobrain25_model(model_path=None, config=None):
+    """
+    Load pure RoboBrain2.5 / Qwen3VL model for RoboSpatial-Eval.
 
+    Supports local checkpoint directories and ModelScope URIs while preserving
+    the runtime behavior used by the working local loader.
+    """
+    import os
     import torch
     from pathlib import Path
     from transformers import (
@@ -478,17 +484,25 @@ def load_robobrain25_model(model_path=None, config=None):
     )
 
     qcfg = (config or {}).get("robobrain25", {})
+    repo_root = Path(__file__).resolve().parent
 
-    local_dir=Path(
-        qcfg.get(
-            "local_model_dir",
-            "./checkpoints/robobrain25"
+    def resolve_path(path_value):
+        if path_value is None:
+            return None
+        path = Path(str(path_value))
+        if path.is_absolute():
+            return str(path)
+        return str((repo_root / path).resolve())
+
+    local_dir = Path(resolve_path(qcfg.get("local_model_dir", "./checkpoints/robobrain25")))
+    repo = model_path or qcfg.get("model_path") or qcfg.get("model_repo")
+    if repo is None:
+        raise ValueError(
+            "RoboBrain2.5 model path is required. Pass MODEL_PATH, set "
+            "robobrain25.model_path, or set robobrain25.model_repo in config.yaml."
         )
-    )
 
-    repo = model_path or qcfg["model_repo"]
-
-    revision=qcfg.get(
+    revision = qcfg.get(
         "model_revision",
         "main"
     )
@@ -526,33 +540,12 @@ def load_robobrain25_model(model_path=None, config=None):
             local_dir=str(target_dir),
         )
 
-    def _download_huggingface_model(repo_id, target_dir, revision_name):
-        from huggingface_hub import snapshot_download
-
-        print(
-            "[ROBOBRAIN25] downloading from Hugging Face:",
-            repo_id,
-            flush=True,
-        )
-        print(
-            "[ROBOBRAIN25] Hugging Face Hub will show download progress below.",
-            flush=True,
-        )
-
-        return snapshot_download(
-            repo_id=repo_id,
-            repo_type="model",
-            revision=revision_name,
-            local_dir=str(target_dir),
-            local_dir_use_symlinks=False,
-        )
-
     if _is_local_model_dir(repo):
 
-        model_root=str(Path(repo))
+        model_root=resolve_path(repo)
 
         print(
-            "[ROBOBRAIN25] use local:",
+            "[ROBOBRAIN25] Using local checkpoint:",
             model_root,
             flush=True
         )
@@ -566,7 +559,7 @@ def load_robobrain25_model(model_path=None, config=None):
         model_root=str(local_dir)
 
         print(
-            "[ROBOBRAIN25] use local:",
+            "[ROBOBRAIN25] Using local checkpoint:",
             model_root,
             flush=True
         )
@@ -580,10 +573,10 @@ def load_robobrain25_model(model_path=None, config=None):
                 revision,
             )
         else:
-            model_root = _download_huggingface_model(
-                str(repo),
-                local_dir,
-                revision,
+            raise ValueError(
+                "RoboBrain2.5 weights are only supported from a local "
+                "checkpoint directory or a ModelScope URI such as "
+                "`modelscope://Lewandovski/SpatialBot`."
             )
 
         print(
@@ -592,13 +585,40 @@ def load_robobrain25_model(model_path=None, config=None):
             flush=True
         )
 
-    torch_dtype=torch.bfloat16
+    dtype_name = str(qcfg.get("torch_dtype", "bfloat16")).lower()
+    if dtype_name in ("bf16", "bfloat16"):
+        torch_dtype = torch.bfloat16
+    elif dtype_name in ("fp16", "float16"):
+        torch_dtype = torch.float16
+    elif dtype_name in ("fp32", "float32"):
+        torch_dtype = torch.float32
+    else:
+        raise ValueError(f"Unsupported torch_dtype for robobrain25: {dtype_name}")
+
+    device_map_cfg = qcfg.get("device_map", "single")
+    if device_map_cfg == "single":
+        device_map = {"": 0}
+    elif device_map_cfg == "auto":
+        device_map = "auto"
+    else:
+        device_map = device_map_cfg
+
+    manual_rename_llm_prefix = bool(qcfg.get("manual_rename_llm_prefix", True))
+    trust_remote_code = bool(qcfg.get("trust_remote_code", True))
+
+    print("=" * 80, flush=True)
+    print("[LOAD] robobrain25", flush=True)
+    print("model_path:", model_root, flush=True)
+    print("device_map:", device_map, flush=True)
+    print("torch_dtype:", torch_dtype, flush=True)
+    print("manual_rename_llm_prefix:", manual_rename_llm_prefix, flush=True)
+    print("=" * 80, flush=True)
 
     model_config=AutoConfig.from_pretrained(
 
         model_root,
 
-        trust_remote_code=True
+        trust_remote_code=trust_remote_code
 
     )
 
@@ -618,6 +638,22 @@ def load_robobrain25_model(model_path=None, config=None):
 
             }
 
+    if getattr(model_config, "rope_scaling", None) is None:
+
+        model_config.rope_scaling={
+
+            "rope_type":"default",
+
+            "mrope_section":[24,20,20]
+
+        }
+
+    print(
+        "[ROBOBRAIN25] text_config.rope_scaling:",
+        getattr(getattr(model_config, "text_config", None), "rope_scaling", None),
+        flush=True
+    )
+
     model=Qwen3VLForConditionalGeneration.from_pretrained(
 
         model_root,
@@ -626,23 +662,98 @@ def load_robobrain25_model(model_path=None, config=None):
 
         torch_dtype=torch_dtype,
 
-        device_map={"":0},
+        device_map=device_map,
 
-        trust_remote_code=True,
+        trust_remote_code=trust_remote_code,
 
         low_cpu_mem_usage=True
 
     )
 
+    if manual_rename_llm_prefix:
+
+        from safetensors.torch import load_file
+
+        weight_files=[
+            file_name
+            for file_name in os.listdir(model_root)
+            if file_name.endswith(".safetensors") or file_name.endswith(".bin")
+        ]
+        weight_files.sort()
+
+        if not weight_files:
+            raise ValueError(f"No .safetensors or .bin weight files found in {model_root}")
+
+        print("[ROBOBRAIN25] Found weight files:", weight_files, flush=True)
+
+        state_dict={}
+        for weight_file in weight_files:
+            file_path=os.path.join(model_root, weight_file)
+            print("[ROBOBRAIN25] Loading weight file:", file_path, flush=True)
+
+            if weight_file.endswith(".safetensors"):
+                chunk=load_file(file_path, device="cpu")
+            else:
+                chunk=torch.load(file_path, map_location="cpu")
+                if isinstance(chunk, dict) and "model" in chunk:
+                    chunk=chunk["model"]
+
+            state_dict.update(chunk)
+
+        new_state_dict={}
+        renamed_count=0
+        for key, value in state_dict.items():
+            if key.startswith("llm."):
+                new_state_dict[key[4:]]=value
+                renamed_count += 1
+            else:
+                new_state_dict[key]=value
+
+        print(f"[ROBOBRAIN25] Renamed {renamed_count} keys with llm. prefix", flush=True)
+
+        missing, unexpected=model.load_state_dict(new_state_dict, strict=False)
+        print("[ROBOBRAIN25] Missing keys:", len(missing), flush=True)
+        print("[ROBOBRAIN25] Unexpected keys:", len(unexpected), flush=True)
+        print("[ROBOBRAIN25] Missing sample:", missing[:10], flush=True)
+        print("[ROBOBRAIN25] Unexpected sample:", unexpected[:10], flush=True)
+
     model.eval()
 
-    processor=AutoProcessor.from_pretrained(
+    try:
 
-        model_root,
+        processor=AutoProcessor.from_pretrained(
 
-        trust_remote_code=True
+            model_root,
 
-    )
+            trust_remote_code=trust_remote_code
+
+        )
+
+        print("[ROBOBRAIN25] Loaded processor from model_path", flush=True)
+
+    except Exception as exc:
+
+        fallback_processor=qcfg.get("fallback_processor", "Qwen/Qwen3-VL-8B-Instruct")
+
+        print(
+            "[ROBOBRAIN25] Failed to load local processor:",
+            repr(exc),
+            flush=True
+        )
+
+        print(
+            "[ROBOBRAIN25] Loading fallback processor:",
+            fallback_processor,
+            flush=True
+        )
+
+        processor=AutoProcessor.from_pretrained(
+
+            fallback_processor,
+
+            trust_remote_code=trust_remote_code
+
+        )
 
     return {
 
@@ -650,14 +761,19 @@ def load_robobrain25_model(model_path=None, config=None):
 
         "processor":processor,
 
-        "device":"cuda:0",
+        "device":"cuda:0" if torch.cuda.is_available() else "cpu",
 
-        "point_divisor":1000.0,
+        "model_path":model_root,
+
+        "point_divisor":float(qcfg.get("point_divisor", 1000.0)),
+
+        "num_points_to_return":int(qcfg.get("num_points_to_return", 2)),
 
         "generation":qcfg.get(
             "generation",
             {}
         )
+        or {}
 
     }
 

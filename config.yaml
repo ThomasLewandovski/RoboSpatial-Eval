@@ -31,7 +31,7 @@ evaluation:
 
 
 robobrain25:
-  # ModelScope URI, Hugging Face repo id, or local model directory.
+  # ModelScope URI or local model directory.
   model_repo: "modelscope://Lewandovski/SpatialBot"
   
   # Local target directory for downloaded model weights.
