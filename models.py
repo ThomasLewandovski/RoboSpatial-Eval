@@ -554,13 +554,19 @@ def load_robobrain25_model(model_path=None, config=None):
             flush=True,
         )
 
-        return snapshot_download(
-            repo_id=repo_id,
-            repo_type="model",
-            revision=revision_name,
-            local_dir=str(target_dir),
-            local_dir_use_symlinks=False,
-        )
+        snapshot_kwargs = {
+            "repo_id": repo_id,
+            "repo_type": "model",
+            "revision": revision_name,
+            "local_dir": str(target_dir),
+            "local_dir_use_symlinks": False,
+        }
+
+        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+        if hf_token:
+            snapshot_kwargs["token"] = hf_token
+
+        return snapshot_download(**snapshot_kwargs)
 
     if _is_local_model_dir(repo):
 
