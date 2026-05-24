@@ -471,14 +471,13 @@ def load_robobrain25_model(model_path=None, config=None):
 
     import torch
     from pathlib import Path
-    from huggingface_hub import snapshot_download
     from transformers import (
         AutoProcessor,
         AutoConfig,
         Qwen3VLForConditionalGeneration
     )
 
-    qcfg=config.get("robobrain25",{})
+    qcfg = (config or {}).get("robobrain25", {})
 
     local_dir=Path(
         qcfg.get(
@@ -487,14 +486,75 @@ def load_robobrain25_model(model_path=None, config=None):
         )
     )
 
-    repo=qcfg["model_repo"]
+    repo = model_path or qcfg["model_repo"]
 
     revision=qcfg.get(
         "model_revision",
         "main"
     )
 
-    if (
+    def _is_local_model_dir(path):
+        path = Path(path)
+        return path.exists() and (path / "config.json").exists()
+
+    def _download_modelscope_model(repo_id, target_dir, revision_name):
+        try:
+            from modelscope.hub.snapshot_download import snapshot_download
+        except ImportError as exc:
+            raise ImportError(
+                "ModelScope download requires the `modelscope` package. "
+                "Install it with `pip install modelscope` or run "
+                "`pip install -r requirements.txt` after updating dependencies."
+            ) from exc
+
+        print(
+            "[ROBOBRAIN25] downloading from ModelScope:",
+            repo_id,
+            flush=True,
+        )
+        print(
+            "[ROBOBRAIN25] ModelScope will show per-file progress bars below.",
+            flush=True,
+        )
+
+        return snapshot_download(
+            model_id=repo_id,
+            revision=revision_name,
+            local_dir=str(target_dir),
+        )
+
+    def _download_huggingface_model(repo_id, target_dir, revision_name):
+        from huggingface_hub import snapshot_download
+
+        print(
+            "[ROBOBRAIN25] downloading from Hugging Face:",
+            repo_id,
+            flush=True,
+        )
+        print(
+            "[ROBOBRAIN25] Hugging Face Hub will show download progress below.",
+            flush=True,
+        )
+
+        return snapshot_download(
+            repo_id=repo_id,
+            repo_type="model",
+            revision=revision_name,
+            local_dir=str(target_dir),
+            local_dir_use_symlinks=False,
+        )
+
+    if _is_local_model_dir(repo):
+
+        model_root=str(Path(repo))
+
+        print(
+            "[ROBOBRAIN25] use local:",
+            model_root,
+            flush=True
+        )
+
+    elif (
         local_dir.exists()
         and
         (local_dir/"config.json").exists()
@@ -510,25 +570,18 @@ def load_robobrain25_model(model_path=None, config=None):
 
     else:
 
-        print(
-            "[ROBOBRAIN25] download from hf",
-            repo,
-            flush=True
-        )
-
-        model_root=snapshot_download(
-
-            repo_id=repo,
-
-            repo_type="model",
-
-            revision=revision,
-
-            local_dir=str(local_dir),
-
-            local_dir_use_symlinks=False
-
-        )
+        if str(repo).startswith("modelscope://"):
+            model_root = _download_modelscope_model(
+                str(repo).removeprefix("modelscope://"),
+                local_dir,
+                revision,
+            )
+        else:
+            model_root = _download_huggingface_model(
+                str(repo),
+                local_dir,
+                revision,
+            )
 
         print(
             "[ROBOBRAIN25] downloaded:",
@@ -738,4 +791,3 @@ def run_robobrain25(question, image_path, depth_path, kwargs):
         return "no"
 
     return answer.strip() 
-
