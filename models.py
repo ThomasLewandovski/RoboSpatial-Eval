@@ -471,9 +471,8 @@ def load_robobrain25_model(model_path=None, config=None):
     """
     Load pure RoboBrain2.5 / Qwen3VL model for RoboSpatial-Eval.
 
-    Supports local checkpoint directories, ModelScope URIs, and Hugging Face
-    repo ids while preserving the runtime behavior used by the working local
-    loader.
+    Supports local checkpoint directories and ModelScope URIs while preserving
+    the runtime behavior used by the working local loader.
     """
     import os
     import torch
@@ -541,33 +540,6 @@ def load_robobrain25_model(model_path=None, config=None):
             local_dir=str(target_dir),
         )
 
-    def _download_huggingface_model(repo_id, target_dir, revision_name):
-        from huggingface_hub import snapshot_download
-
-        print(
-            "[ROBOBRAIN25] downloading from Hugging Face:",
-            repo_id,
-            flush=True,
-        )
-        print(
-            "[ROBOBRAIN25] Hugging Face Hub will show download progress below.",
-            flush=True,
-        )
-
-        snapshot_kwargs = {
-            "repo_id": repo_id,
-            "repo_type": "model",
-            "revision": revision_name,
-            "local_dir": str(target_dir),
-            "local_dir_use_symlinks": False,
-        }
-
-        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
-        if hf_token:
-            snapshot_kwargs["token"] = hf_token
-
-        return snapshot_download(**snapshot_kwargs)
-
     if _is_local_model_dir(repo):
 
         model_root=resolve_path(repo)
@@ -601,10 +573,10 @@ def load_robobrain25_model(model_path=None, config=None):
                 revision,
             )
         else:
-            model_root = _download_huggingface_model(
-                str(repo),
-                local_dir,
-                revision,
+            raise ValueError(
+                "RoboBrain2.5 weights are only supported from a local "
+                "checkpoint directory or a ModelScope URI such as "
+                "`modelscope://Lewandovski/SpatialBot`."
             )
 
         print(
